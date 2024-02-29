@@ -2,6 +2,7 @@ import { ActivityLogItem } from 'lib/components/ActivityLog/humanizeActivity'
 
 import { ActivityScope, InsightShortId } from '~/types'
 
+// touch
 export const teamActivityResponseJson: ActivityLogItem[] = [
     {
         user: {

@@ -17,9 +17,9 @@ concurrency:
 jobs:
     storybook-chromatic:
         name: Publish to Chromatic
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
         timeout-minutes: 15
-        if: github.event.pull_request.head.repo.full_name == github.repository # Don't run on forks
+        # if: github.event.pull_request.head.repo.full_name == github.repository Don't run on forks
         outputs:
             storybook-url: ${{ steps.publish.outputs.storybookUrl }}
         steps:
@@ -33,7 +33,7 @@ jobs:
                   version: 8.x.x
 
             - name: Set up Node.js
-              uses: actions/setup-node@v3
+              uses: useblacksmith/setup-node@v5
               with:
                   node-version: 18.12.1
                   cache: pnpm
@@ -51,7 +51,7 @@ jobs:
 
     visual-regression:
         name: Visual regression tests
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
         timeout-minutes: 30
         container:
             image: mcr.microsoft.com/playwright:v1.41.2
@@ -112,7 +112,7 @@ jobs:
                   version: 8.x.x
 
             - name: Set up Node.js
-              uses: buildjet/setup-node@v3
+              uses: useblacksmith/setup-node@v5
               with:
                   node-version: 18.12.1
                   cache: pnpm
@@ -214,7 +214,7 @@ jobs:
 
     visual-regression-summary:
         name: Summarize visual regression tests
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
         timeout-minutes: 5
         needs: visual-regression
         if: always() # Run even if visual-regression fails for one (or more) of the browsers
