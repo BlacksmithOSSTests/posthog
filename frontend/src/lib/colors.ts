@@ -96,6 +96,7 @@ export function getGraphColors(isDarkModeOn: boolean): Record<string, string | n
  * @param strength The strength of the data point.
  * @param floor The minimum saturation. This preserves proportionality of strength, so doesn't just cut it off.
  */
+// touch
 export function gradateColor(
     hsl: [number, number, number],
     strength: number,
