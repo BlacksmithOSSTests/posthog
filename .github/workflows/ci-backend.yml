@@ -90,7 +90,7 @@ jobs:
         timeout-minutes: 30
 
         name: Python code quality checks
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
 
         steps:
             # If this run wasn't initiated by the bot (meaning: snapshot update) and we've determined
@@ -105,7 +105,7 @@ jobs:
                   fetch-depth: 1
 
             - name: Set up Python
-              uses: actions/setup-python@v5
+              uses: useblacksmith/setup-python@v6
               with:
                   python-version: 3.10.10
                   cache: 'pip'
@@ -174,7 +174,7 @@ jobs:
         timeout-minutes: 10
 
         name: Validate Django migrations
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
 
         steps:
             - uses: actions/checkout@v3
@@ -185,7 +185,7 @@ jobs:
                   docker compose -f docker-compose.dev.yml up -d
 
             - name: Set up Python
-              uses: actions/setup-python@v5
+              uses: useblacksmith/setup-python@v6
               with:
                   python-version: 3.10.10
                   cache: 'pip'
@@ -237,7 +237,7 @@ jobs:
         timeout-minutes: 30
 
         name: Django tests – ${{ matrix.segment }} (persons-on-events ${{ matrix.person-on-events && 'on' || 'off' }}), Py ${{ matrix.python-version }}, ${{ matrix.clickhouse-server-image }} (${{matrix.group}}/${{ matrix.concurrency }})
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
 
         strategy:
             fail-fast: false
@@ -318,7 +318,7 @@ jobs:
             matrix:
                 clickhouse-server-image: ['clickhouse/clickhouse-server:23.11.2.11-alpine']
         if: needs.changes.outputs.backend == 'true'
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
         steps:
             - name: 'Checkout repo'
               uses: actions/checkout@v3
@@ -332,7 +332,7 @@ jobs:
                   docker compose -f docker-compose.dev.yml up -d
 
             - name: Set up Python
-              uses: actions/setup-python@v5
+              uses: useblacksmith/setup-python@v6
               with:
                   python-version: 3.10.10
                   cache: 'pip'

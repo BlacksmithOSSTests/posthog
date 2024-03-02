@@ -119,8 +119,8 @@ export class SessionRecordingIngester {
     sessionHighWaterMarker: OffsetHighWaterMarker
     persistentHighWaterMarker: OffsetHighWaterMarker
     realtimeManager: RealtimeManager
-    replayEventsIngester?: ReplayEventsIngester
-    consoleLogsIngester?: ConsoleLogsIngester
+    replayEventsIngester: ReplayEventsIngester
+    consoleLogsIngester: ConsoleLogsIngester
     batchConsumer?: BatchConsumer
     partitionMetrics: Record<number, PartitionMetrics> = {}
     teamsRefresher: BackgroundRefresher<Record<string, TeamIDWithConfig>>
@@ -135,7 +135,7 @@ export class SessionRecordingIngester {
     private debugPartition: number | undefined = undefined
 
     constructor(
-        private globalServerConfig: PluginsServerConfig,
+        globalServerConfig: PluginsServerConfig,
         private postgres: PostgresRouter,
         private objectStorage: ObjectStorage
     ) {
@@ -163,6 +163,10 @@ export class SessionRecordingIngester {
             this.redisPool,
             this.config.SESSION_RECORDING_REDIS_PREFIX + `kafka-${kafkaClusterIdentifier}/persistent/`
         )
+
+        // NOTE: This is the only place where we need to use the shared server config
+        this.replayEventsIngester = new ReplayEventsIngester(globalServerConfig, this.persistentHighWaterMarker)
+        this.consoleLogsIngester = new ConsoleLogsIngester(globalServerConfig, this.persistentHighWaterMarker)
 
         this.teamsRefresher = new BackgroundRefresher(async () => {
             try {
@@ -353,23 +357,19 @@ export class SessionRecordingIngester {
                     },
                 })
 
-                if (this.replayEventsIngester) {
-                    await runInstrumentedFunction({
-                        statsKey: `recordingingester.handleEachBatch.consumeReplayEvents`,
-                        func: async () => {
-                            await this.replayEventsIngester!.consumeBatch(recordingMessages)
-                        },
-                    })
-                }
+                await runInstrumentedFunction({
+                    statsKey: `recordingingester.handleEachBatch.consumeReplayEvents`,
+                    func: async () => {
+                        await this.replayEventsIngester.consumeBatch(recordingMessages)
+                    },
+                })
 
-                if (this.consoleLogsIngester) {
-                    await runInstrumentedFunction({
-                        statsKey: `recordingingester.handleEachBatch.consumeConsoleLogEvents`,
-                        func: async () => {
-                            await this.consoleLogsIngester!.consumeBatch(recordingMessages)
-                        },
-                    })
-                }
+                await runInstrumentedFunction({
+                    statsKey: `recordingingester.handleEachBatch.consumeConsoleLogEvents`,
+                    func: async () => {
+                        await this.consoleLogsIngester.consumeBatch(recordingMessages)
+                    },
+                })
             },
         })
     }
@@ -397,20 +397,8 @@ export class SessionRecordingIngester {
         await this.realtimeManager.subscribe()
         // Load teams into memory
         await this.teamsRefresher.refresh()
-
-        // NOTE: This is the only place where we need to use the shared server config
-        if (this.config.SESSION_RECORDING_CONSOLE_LOGS_INGESTION_ENABLED) {
-            this.consoleLogsIngester = new ConsoleLogsIngester(this.globalServerConfig, this.persistentHighWaterMarker)
-            await this.consoleLogsIngester.start()
-        }
-
-        if (this.config.SESSION_RECORDING_REPLAY_EVENTS_INGESTION_ENABLED) {
-            this.replayEventsIngester = new ReplayEventsIngester(
-                this.globalServerConfig,
-                this.persistentHighWaterMarker
-            )
-            await this.replayEventsIngester.start()
-        }
+        await this.replayEventsIngester.start()
+        await this.consoleLogsIngester.start()
 
         const connectionConfig = createRdConnectionConfigFromEnvVars(this.config)
 
@@ -489,13 +477,8 @@ export class SessionRecordingIngester {
         // There is a race between the revoke callback and this function - Either way one of them gets there and covers the revocations
         void this.scheduleWork(this.onRevokePartitions(assignedPartitions))
         void this.scheduleWork(this.realtimeManager.unsubscribe())
-
-        if (this.replayEventsIngester) {
-            void this.scheduleWork(this.replayEventsIngester.stop())
-        }
-        if (this.consoleLogsIngester) {
-            void this.scheduleWork(this.consoleLogsIngester!.stop())
-        }
+        void this.scheduleWork(this.replayEventsIngester.stop())
+        void this.scheduleWork(this.consoleLogsIngester.stop())
 
         const promiseResults = await Promise.allSettled(this.promises)
 
