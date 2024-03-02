@@ -44,8 +44,6 @@ jobs:
         if: github.repository == 'PostHog/posthog'
         name: Determine need to run backend checks
         # Set job outputs to values from filter step
-        outputs:
-            backend: ${{ steps.filter.outputs.backend }}
         steps:
             # For pull requests it's not necessary to checkout the code, but we
             # also want this to run on master so we need to checkout
