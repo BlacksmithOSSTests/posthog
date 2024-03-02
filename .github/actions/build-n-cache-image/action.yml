@@ -35,7 +35,7 @@ runs:
           id: build
           uses: depot/build-push-action@v1
           with:
-              project: 47t3knsmvp
+              project: n032xkp49j
               context: .
               buildx-fallback: false # buildx is so slow it's better to just fail
               tags: ${{ steps.emit.outputs.tag }}
