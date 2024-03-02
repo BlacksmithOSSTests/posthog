@@ -39,7 +39,7 @@ jobs:
     # Job to decide if we should run backend ci
     # See https://github.com/dorny/paths-filter#conditional-execution for more details
     changes:
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
         timeout-minutes: 5
         if: github.repository == 'PostHog/posthog'
         name: Determine need to run backend checks
@@ -51,46 +51,12 @@ jobs:
             # also want this to run on master so we need to checkout
             - uses: actions/checkout@v3
 
-            - uses: dorny/paths-filter@v2
-              id: filter
-              with:
-                  filters: |
-                      backend:
-                        # Avoid running backend tests for irrelevant changes
-                        # NOTE: we are at risk of missing a dependency here. We could make
-                        # the dependencies more clear if we separated the backend/frontend
-                        # code completely
-                        # really we should ignore ee/frontend/** but dorny doesn't support that
-                        # - '!ee/frontend/**'
-                        # including the negated rule appears to work
-                        # but makes it always match because the checked file always isn't `ee/frontend/**` 🙈
-                        - 'ee/**/*'
-                        - 'posthog/**/*'
-                        - 'bin/*.py'
-                        - requirements.txt
-                        - requirements-dev.txt
-                        - mypy.ini
-                        - pytest.ini
-                        - frontend/src/queries/schema.json # Used for generating schema.py
-                        - plugin-transpiler/src # Used for transpiling plugins
-                        # Make sure we run if someone is explicitly change the workflow
-                        - .github/workflows/ci-backend.yml
-                        - .github/actions/run-backend-tests/action.yml
-                        # We use docker compose for tests, make sure we rerun on
-                        # changes to docker-compose.dev.yml e.g. dependency
-                        # version changes
-                        - docker-compose.dev.yml
-                        - frontend/public/email/*
-                        # These scripts are used in the CI
-                        - bin/check_temporal_up
-                        - bin/check_kafka_clickhouse_up
-
     backend-code-quality:
         needs: changes
         timeout-minutes: 30
 
         name: Python code quality checks
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
 
         steps:
             # If this run wasn't initiated by the bot (meaning: snapshot update) and we've determined
@@ -174,7 +140,7 @@ jobs:
         timeout-minutes: 10
 
         name: Validate Django migrations
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
 
         steps:
             - uses: actions/checkout@v3
@@ -237,7 +203,7 @@ jobs:
         timeout-minutes: 30
 
         name: Django tests – ${{ matrix.segment }} (persons-on-events ${{ matrix.person-on-events && 'on' || 'off' }}), Py ${{ matrix.python-version }}, ${{ matrix.clickhouse-server-image }} (${{matrix.group}}/${{ matrix.concurrency }})
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
 
         strategy:
             fail-fast: false
@@ -318,7 +284,7 @@ jobs:
             matrix:
                 clickhouse-server-image: ['clickhouse/clickhouse-server:23.11.2.11-alpine']
         if: needs.changes.outputs.backend == 'true'
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
         steps:
             - name: 'Checkout repo'
               uses: actions/checkout@v3
