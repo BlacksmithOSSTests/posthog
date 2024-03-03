@@ -82,7 +82,7 @@ runs:
               pnpm install
               pnpm run build
 
-        - uses: syphar/restore-virtualenv@v1
+        - uses: useblacksmith/restore-virtualenv@v1
           id: cache-backend-tests
           with:
               custom_cache_key_element: v2

@@ -112,7 +112,7 @@ jobs:
                   cache-dependency-path: '**/requirements*.txt'
                   token: ${{ secrets.POSTHOG_BOT_GITHUB_TOKEN }}
 
-            - uses: syphar/restore-virtualenv@v1
+            - uses: useblacksmith/restore-virtualenv@v1
               id: cache-backend-tests
               with:
                   custom_cache_key_element: v2-
@@ -198,7 +198,7 @@ jobs:
                   cache-dependency-path: '**/requirements*.txt'
                   token: ${{ secrets.POSTHOG_BOT_GITHUB_TOKEN }}
 
-            - uses: syphar/restore-virtualenv@v1
+            - uses: useblacksmith/restore-virtualenv@v1
               id: cache-backend-tests
               with:
                   custom_cache_key_element: v1-
@@ -357,7 +357,7 @@ jobs:
                   cache-dependency-path: '**/requirements*.txt'
                   token: ${{ secrets.POSTHOG_BOT_GITHUB_TOKEN }}
 
-            - uses: syphar/restore-virtualenv@v1
+            - uses: useblacksmith/restore-virtualenv@v1
               id: cache-backend-tests
               with:
                   custom_cache_key_element: v2-
