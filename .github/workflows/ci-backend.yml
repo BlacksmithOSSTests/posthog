@@ -243,7 +243,7 @@ jobs:
         timeout-minutes: 30
 
         name: Django tests – ${{ matrix.segment }} (persons-on-events ${{ matrix.person-on-events && 'on' || 'off' }}), Py ${{ matrix.python-version }}, ${{ matrix.clickhouse-server-image }} (${{matrix.group}}/${{ matrix.concurrency }})
-        runs-on: blacksmith-4vcpu-ubuntu-2204
+        runs-on: blacksmith-8vcpu-ubuntu-2204
 
         strategy:
             fail-fast: false
