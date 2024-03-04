@@ -143,6 +143,13 @@ runs:
           shell: bash
           run: echo "PYTEST_ARGS=--snapshot-update" >> $GITHUB_ENV # We can only update snapshots within the PostHog org
 
+        - name: Install Python testing dependencies
+          if: steps.cache-backend-tests.outputs.cache-hit != 'true'
+          shell: bash
+          run: |
+            pip install pytest-random-order
+            # Install other testing dependencies as needed
+
         # Tests
         - name: Run FOSS tests
           if: ${{ inputs.segment == 'FOSS' }}
@@ -156,6 +163,7 @@ runs:
                   && './posthog/clickhouse/ ./posthog/hogql/ ./posthog/queries/ ./posthog/api/test/test_insight* ./posthog/api/test/dashboards/test_dashboard.py'
                   || 'hogvm posthog'
               }} -m "not async_migrations" \
+                  --random-order \
                   --splits ${{ inputs.concurrency }} --group ${{ inputs.group }} \
                   --durations=100 --durations-min=1.0 \
                   $PYTEST_ARGS
@@ -168,6 +176,7 @@ runs:
           shell: bash
           run: | # async_migrations covered in ci-async-migrations.yml
               pytest ${{ inputs.person-on-events == 'true' && 'ee/clickhouse/' || 'ee/' }} -m "not async_migrations" \
+                  --random-order \
                   --splits ${{ inputs.concurrency }} --group ${{ inputs.group }} \
                   --durations=100 --durations-min=1.0 \
                   $PYTEST_ARGS
@@ -183,5 +192,6 @@ runs:
           shell: bash
           run: |
               pytest posthog/api/test/test_decide.py::TestDecideUsesReadReplica \
+                  --random-order \
                   --durations=100 --durations-min=1.0 \
                   $PYTEST_ARGS
