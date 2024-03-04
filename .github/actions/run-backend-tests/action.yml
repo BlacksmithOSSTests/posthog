@@ -144,11 +144,9 @@ runs:
           run: echo "PYTEST_ARGS=--snapshot-update" >> $GITHUB_ENV # We can only update snapshots within the PostHog org
 
         - name: Install Python testing dependencies
-          if: steps.cache-backend-tests.outputs.cache-hit != 'true'
           shell: bash
           run: |
             pip install pytest-random-order
-            # Install other testing dependencies as needed
 
         # Tests
         - name: Run FOSS tests
