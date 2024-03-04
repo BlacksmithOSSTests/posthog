@@ -257,6 +257,12 @@ jobs:
                 group: [1, 2, 3, 4, 5]
 
         steps:
+            # Pre-tests
+            - uses: alexellis/setup-arkade@master
+            - name: Install vmmeter
+              run: |
+                sudo -E arkade oci install ghcr.io/openfaasltd/vmmeter:latest --path /usr/local/bin/
+            - uses: self-actuated/vmmeter-action@master
             # The first step is the only one that should run if `needs.changes.outputs.backend == 'false'`.
             # All the other ones should rely on `needs.changes.outputs.backend` directly or indirectly, so that they're
             # effectively skipped if backend code is unchanged. See https://github.com/PostHog/posthog/pull/15174.

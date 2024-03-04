@@ -29,7 +29,6 @@ inputs:
 runs:
     using: 'composite'
     steps:
-        # Pre-tests
 
         - name: Stop/Start stack with Docker Compose
           shell: bash
