@@ -39,9 +39,9 @@ jobs:
     # Job to decide if we should run backend ci
     # See https://github.com/dorny/paths-filter#conditional-execution for more details
     changes:
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
         timeout-minutes: 5
-        if: github.repository == 'PostHog/posthog'
+        # if: github.repository == 'PostHog/posthog'
         name: Determine need to run backend checks
         # Set job outputs to values from filter step
         outputs:
@@ -90,7 +90,7 @@ jobs:
         timeout-minutes: 30
 
         name: Python code quality checks
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
 
         steps:
             # If this run wasn't initiated by the bot (meaning: snapshot update) and we've determined
@@ -105,14 +105,14 @@ jobs:
                   fetch-depth: 1
 
             - name: Set up Python
-              uses: actions/setup-python@v5
+              uses: useblacksmith/setup-python@v6
               with:
                   python-version: 3.10.10
                   cache: 'pip'
                   cache-dependency-path: '**/requirements*.txt'
                   token: ${{ secrets.POSTHOG_BOT_GITHUB_TOKEN }}
 
-            - uses: syphar/restore-virtualenv@v1
+            - uses: useblacksmith/restore-virtualenv@v1
               id: cache-backend-tests
               with:
                   custom_cache_key_element: v2-
@@ -174,10 +174,16 @@ jobs:
         timeout-minutes: 10
 
         name: Validate Django migrations
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
 
         steps:
             - uses: actions/checkout@v3
+
+            - name: Login to Docker Hub
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
 
             - name: Stop/Start stack with Docker Compose
               run: |
@@ -185,14 +191,14 @@ jobs:
                   docker compose -f docker-compose.dev.yml up -d
 
             - name: Set up Python
-              uses: actions/setup-python@v5
+              uses: useblacksmith/setup-python@v6
               with:
                   python-version: 3.10.10
                   cache: 'pip'
                   cache-dependency-path: '**/requirements*.txt'
                   token: ${{ secrets.POSTHOG_BOT_GITHUB_TOKEN }}
 
-            - uses: syphar/restore-virtualenv@v1
+            - uses: useblacksmith/restore-virtualenv@v1
               id: cache-backend-tests
               with:
                   custom_cache_key_element: v1-
@@ -237,7 +243,7 @@ jobs:
         timeout-minutes: 30
 
         name: Django tests – ${{ matrix.segment }} (persons-on-events ${{ matrix.person-on-events && 'on' || 'off' }}), Py ${{ matrix.python-version }}, ${{ matrix.clickhouse-server-image }} (${{matrix.group}}/${{ matrix.concurrency }})
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-8vcpu-ubuntu-2204
 
         strategy:
             fail-fast: false
@@ -251,6 +257,12 @@ jobs:
                 group: [1, 2, 3, 4, 5]
 
         steps:
+            # Pre-tests
+            - uses: alexellis/setup-arkade@master
+            - name: Install vmmeter
+              run: |
+                sudo -E arkade oci install ghcr.io/openfaasltd/vmmeter:latest --path /usr/local/bin/
+            - uses: self-actuated/vmmeter-action@master
             # The first step is the only one that should run if `needs.changes.outputs.backend == 'false'`.
             # All the other ones should rely on `needs.changes.outputs.backend` directly or indirectly, so that they're
             # effectively skipped if backend code is unchanged. See https://github.com/PostHog/posthog/pull/15174.
@@ -261,6 +273,12 @@ jobs:
                   ref: ${{ github.event.pull_request.head.ref }}
                   # Use PostHog Bot token when not on forks to enable proper snapshot updating
                   token: ${{ github.event.pull_request.head.repo.full_name == github.repository && secrets.POSTHOG_BOT_GITHUB_TOKEN || github.token }}
+
+            - name: Login to Docker Hub
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
 
             - uses: ./.github/actions/run-backend-tests
               if: needs.changes.outputs.backend == 'true'
@@ -318,12 +336,18 @@ jobs:
             matrix:
                 clickhouse-server-image: ['clickhouse/clickhouse-server:23.11.2.11-alpine']
         if: needs.changes.outputs.backend == 'true'
-        runs-on: ubuntu-latest
+        runs-on: blacksmith-4vcpu-ubuntu-2204
         steps:
             - name: 'Checkout repo'
               uses: actions/checkout@v3
               with:
                   fetch-depth: 1
+
+            - name: Login to Docker Hub
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
 
             - name: Start stack with Docker Compose
               run: |
@@ -332,14 +356,14 @@ jobs:
                   docker compose -f docker-compose.dev.yml up -d
 
             - name: Set up Python
-              uses: actions/setup-python@v5
+              uses: useblacksmith/setup-python@v6
               with:
                   python-version: 3.10.10
                   cache: 'pip'
                   cache-dependency-path: '**/requirements*.txt'
                   token: ${{ secrets.POSTHOG_BOT_GITHUB_TOKEN }}
 
-            - uses: syphar/restore-virtualenv@v1
+            - uses: useblacksmith/restore-virtualenv@v1
               id: cache-backend-tests
               with:
                   custom_cache_key_element: v2-
