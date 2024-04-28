@@ -35,13 +35,12 @@ jobs:
 
   jest-shard:
     runs-on: blacksmith-2vcpu-ubuntu-2204
-    name: Jest test (${{ matrix.segment }} - ${{ matrix.chunk }})
+    name: Jest test ${{ matrix.chunk }}
 
     strategy:
       # If one test fails, still run the others
       fail-fast: false
       matrix:
-        segment: ['FOSS', 'EE']
         chunk: [1, 2, 3]
 
     steps:
@@ -64,6 +63,6 @@ jobs:
 
       - name: Test with Jest
         # set maxWorkers or Jest only uses 1 CPU in GitHub Actions
-        run: pnpm test:unit --maxWorkers=2 --shard=${{ matrix.chunk }}/3
+        run: pnpm test:unit --shard=${{ matrix.chunk }}/3
         env:
           NODE_OPTIONS: --max-old-space-size=6144
