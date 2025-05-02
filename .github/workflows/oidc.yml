@@ -1,0 +1,25 @@
+name: OIDC GSM Test
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test:
+    runs-on: blacksmith-2vcpu-ubuntu-2204 
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Authenticate to GCP via OIDC
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "github-ci-access@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com"
+
+      - name: Pull secret from GSM
+        run: |
+          gcloud secrets versions access latest --secret=${{ secrets.GCP_SECRET_NAME }}
