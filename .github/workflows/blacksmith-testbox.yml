@@ -1,0 +1,171 @@
+# Blacksmith testbox workflow for iterating on Django test performance.
+#
+# Warmup:  blacksmith testbox warmup blacksmith-testbox.yml --org BlacksmithOSSTests
+# Run:     blacksmith testbox run <id> -- <command>
+# Status:  blacksmith testbox status <id>
+# Stop:    blacksmith testbox stop <id>
+#
+# The runner stays alive after setup completes so you can run pytest commands
+# interactively via SSH. The begin-testbox action installs your SSH key and
+# phones home so the CLI knows where to connect.
+#
+# Experiment goal: does pytest-xdist -n 2 speed up a Core shard on 2vCPU?
+#
+# The settings.py already handles xdist worker isolation via PYTEST_XDIST_WORKER:
+#   gw0 → ClickHouse DB: posthog_test_gw0
+#   gw1 → ClickHouse DB: posthog_test_gw1
+# Each worker gets its own ClickHouse database — no shared-state conflicts.
+#
+# Baseline (single-threaded, shard 1/38):
+#   blacksmith testbox run <id> -- bash -c "time pytest -v --tb=short \
+#     posthog ee/ -m 'not async_migrations' \
+#     --ignore=posthog/temporal --ignore=posthog/dags \
+#     --splits 38 --group 1 --splitting-algorithm=duration_based_chunks \
+#     --reruns 2 --reruns-delay 1 -r fEsxX"
+#
+# xdist experiment (-n 2 workers on same shard):
+#   blacksmith testbox run <id> -- bash -c "time pytest -v --tb=short \
+#     posthog ee/ -m 'not async_migrations' \
+#     --ignore=posthog/temporal --ignore=posthog/dags \
+#     --splits 38 --group 1 --splitting-algorithm=duration_based_chunks \
+#     -n 2 \
+#     --reruns 2 --reruns-delay 1 -r fEsxX"
+#
+# Resource check during a run:
+#   blacksmith testbox run <id> -- bash -c "docker stats --no-stream && free -h && nproc"
+
+name: Blacksmith Testbox – Django benchmark
+
+on:
+    workflow_dispatch:
+        inputs:
+            testbox_id:
+                description: 'Testbox session ID (passed automatically by blacksmith testbox warmup)'
+                type: string
+                required: true
+
+jobs:
+    django-testbox:
+        name: Django testbox (2vCPU Blacksmith)
+        runs-on: blacksmith-2vcpu-ubuntu-2404
+        timeout-minutes: 60
+
+        env:
+            SECRET_KEY: '6b01eee4f945ca25045b5aab440b953461faf08693a9abbf1166dc7c6b9772da'
+            DATABASE_URL: 'postgres://posthog:posthog@localhost:5432/posthog'
+            REDIS_URL: 'redis://localhost'
+            CLICKHOUSE_HOST: 'localhost'
+            CLICKHOUSE_SECURE: 'False'
+            CLICKHOUSE_VERIFY: 'False'
+            TEST: 1
+            DISPLAY: ':99.0'
+            UV_HTTP_TIMEOUT: 120
+            OBJECT_STORAGE_ENABLED: 'True'
+            OBJECT_STORAGE_ENDPOINT: 'http://localhost:19000'
+            OBJECT_STORAGE_ACCESS_KEY_ID: 'object_storage_root_user'
+            OBJECT_STORAGE_SECRET_ACCESS_KEY: 'object_storage_root_password'
+
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 1
+                  lfs: true
+                  clean: false
+
+            # Must come early — phones home so the CLI knows the runner IP/SSH key.
+            # The runner stays alive via SSH until timeout after all steps complete.
+            - name: Begin testbox session
+              uses: useblacksmith/begin-testbox@v1
+              with:
+                  testbox_id: ${{ inputs.testbox_id }}
+
+            # Core services only — explicitly no profiles so temporal+elasticsearch don't start.
+            # Saves ~30s startup time and avoids 512MB+ JVM memory pressure from Elasticsearch.
+            - name: Start Docker services (core only, no temporal/elasticsearch)
+              env:
+                  COMPOSE_FILE: docker-compose.dev.yml:docker-compose.profiles.yml
+                  COMPOSE_PROFILES: ''
+              run: |
+                  cp posthog/user_scripts/latest_user_defined_function.xml docker/clickhouse/user_defined_function.xml
+                  bin/ci-wait-for-docker launch --background --down-all-profiles
+
+            - name: Add service hostnames to /etc/hosts
+              run: echo "127.0.0.1 db redis7 kafka clickhouse clickhouse-coordinator objectstorage seaweedfs temporal" | sudo tee -a /etc/hosts
+
+            - name: Set up Python 3.12
+              uses: actions/setup-python@v5
+              with:
+                  python-version: '3.12.12'
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v7
+              with:
+                  version: '0.10.2'
+                  enable-cache: true
+                  cache-dependency-glob: uv.lock
+
+            - name: Install SAML dependencies
+              run: sudo apt-get update && sudo apt-get install -y libxml2-dev libxmlsec1-dev libxmlsec1-openssl
+
+            - name: Install Python dependencies
+              run: UV_PROJECT_ENVIRONMENT=$pythonLocation uv sync --frozen --dev
+
+            # Qt libs prevent spurious exit code 134 after tests pass
+            - name: Install Qt libraries
+              uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
+              with:
+                  packages: libegl1 libdbus-1-3 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xinput0 libxcb-xfixes0 x11-utils libxcb-cursor0 libopengl0
+                  version: 1.0
+
+            # Rust is needed only to build sqlx-cli (there's no pre-built binary for 0.8.0).
+            # sqlx-cli is required by conftest.py to run persons DB migrations at test startup.
+            - name: Install Rust
+              uses: dtolnay/rust-toolchain@0b1efabc08b657293548b77fb76cc02d26091c7e
+              with:
+                  toolchain: 1.91.1
+                  components: cargo
+
+            - name: Cache Rust/sqlx-cli build
+              uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+              with:
+                  shared-key: 'testbox-sqlx-cli'
+                  workspaces: rust
+                  save-if: 'true'
+
+            - name: Install sqlx-cli
+              run: |
+                  cargo install sqlx-cli \
+                    --version 0.8.0 \
+                    --features postgres \
+                    --no-default-features \
+                    --locked
+              env:
+                  CARGO_INSTALL_ROOT: /usr/local
+
+            - name: Set up needed files
+              run: |
+                  mkdir -p frontend/dist
+                  touch frontend/dist/index.html
+                  touch frontend/dist/layout.html
+                  touch frontend/dist/exporter.html
+                  ./bin/download-mmdb
+
+            - name: Wait for Docker services
+              env:
+                  COMPOSE_FILE: docker-compose.dev.yml:docker-compose.profiles.yml
+                  COMPOSE_PROFILES: ''
+              run: bin/ci-wait-for-docker wait
+
+            - name: Print environment summary
+              run: |
+                  echo "=== Testbox Environment Ready ==="
+                  echo "Python: $(python --version)"
+                  echo "uv: $(uv --version)"
+                  echo "sqlx: $(sqlx --version)"
+                  echo "CPUs: $(nproc)"
+                  echo "Memory: $(free -h | awk '/^Mem:/{print $2}')"
+                  echo "Docker containers:"
+                  docker ps --format "table {{.Names}}\t{{.Status}}" || true
+                  echo ""
+                  echo "Ready! Use 'blacksmith testbox run' to execute pytest commands."
+                  echo "See workflow comments for baseline and xdist experiment commands."
