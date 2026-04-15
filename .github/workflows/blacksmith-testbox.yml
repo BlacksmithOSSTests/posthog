@@ -138,9 +138,9 @@ jobs:
                     --version 0.8.0 \
                     --features postgres \
                     --no-default-features \
-                    --locked
-              env:
-                  CARGO_INSTALL_ROOT: /usr/local
+                    --locked \
+                    --root "$RUNNER_TEMP/sqlx-cli"
+                  echo "$RUNNER_TEMP/sqlx-cli/bin" >> "$GITHUB_PATH"
 
             - name: Set up needed files
               run: |
