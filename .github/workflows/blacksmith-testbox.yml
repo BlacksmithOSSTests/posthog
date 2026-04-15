@@ -156,13 +156,13 @@ jobs:
               run: |
                   echo "::group::Benchmark A — single-threaded"
                   START=$(date +%s)
+                  EXIT=0
                   pytest --tb=short -q \
                     ${{ inputs.test_path }} \
                     -m "not async_migrations" \
                     --timeout=300 --timeout-func-only \
                     -p no:xdist \
-                    2>&1
-                  EXIT=$?
+                    2>&1 || EXIT=$?
                   END=$(date +%s)
                   echo "::endgroup::"
                   ELAPSED=$((END - START))
@@ -180,13 +180,13 @@ jobs:
                   echo "gw0 → posthog_test_gw0 on :8123"
                   echo "gw1 → posthog_test_gw1 on :8123 (shared instance, separate DB)"
                   START=$(date +%s)
+                  EXIT=0
                   pytest --tb=short -q \
                     ${{ inputs.test_path }} \
                     -m "not async_migrations" \
                     --timeout=300 --timeout-func-only \
                     -n 2 \
-                    2>&1
-                  EXIT=$?
+                    2>&1 || EXIT=$?
                   END=$(date +%s)
                   echo "::endgroup::"
                   ELAPSED=$((END - START))
@@ -228,13 +228,13 @@ jobs:
                   echo "gw1 → posthog_test_gw1 on :8124 (second ClickHouse)"
                   echo "Routing controlled by CH_XDIST_ROUTING=1 + root conftest.py"
                   START=$(date +%s)
+                  EXIT=0
                   pytest --tb=short -q \
                     ${{ inputs.test_path }} \
                     -m "not async_migrations" \
                     --timeout=300 --timeout-func-only \
                     -n 2 \
-                    2>&1
-                  EXIT=$?
+                    2>&1 || EXIT=$?
                   END=$(date +%s)
                   echo "::endgroup::"
                   ELAPSED=$((END - START))
