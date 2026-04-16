@@ -39,7 +39,10 @@ done
 
 START=$(date +%s)
 EXIT=0
-CH_XDIST_ROUTING=1 python -m pytest --tb=line -q posthog/hogql_queries/test/ \
+# IN_EVAL_TESTING=1 causes create_clickhouse_tables() to also create Kafka-engine
+# tables (kafka_person_distinct_id2 etc.) in the test DB on CH2, which is needed
+# because CH2 is a fresh instance without PostHog's docker-compose initialization.
+IN_EVAL_TESTING=1 CH_XDIST_ROUTING=1 python -m pytest --tb=line -q posthog/hogql_queries/test/ \
   -m "not async_migrations" \
   --create-db \
   -n 2 2>&1 || EXIT=$?
