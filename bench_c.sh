@@ -20,7 +20,7 @@ docker run -d --name clickhouse2 --network posthog_default \
   -e CLICKHOUSE_SKIP_USER_SETUP=1 \
   -v "$PWD/docker/clickhouse/users-dev.xml:/etc/clickhouse-server/users.xml" \
   -v "$PWD/docker/clickhouse/config.xml:/etc/clickhouse-server/config.xml" \
-  -v "$PWD/docker/clickhouse/config.d/default.xml:/etc/clickhouse-server/config.d/default.xml" \
+  -v "$PWD/docker/clickhouse/config.d/default_ch2.xml:/etc/clickhouse-server/config.d/default.xml" \
   -v "$PWD/posthog/user_scripts:/var/lib/clickhouse/user_scripts" \
   -v "$PWD/posthog/user_scripts/latest_user_defined_function.xml:/etc/clickhouse-server/user_defined_function.xml" \
   "$CHIMG"
@@ -33,6 +33,7 @@ START=$(date +%s)
 EXIT=0
 CH_XDIST_ROUTING=1 python -m pytest --tb=line -q posthog/hogql_queries/test/ \
   -m "not async_migrations" \
+  --create-db \
   -n 2 2>&1 || EXIT=$?
 END=$(date +%s)
 ELAPSED=$((END - START))
