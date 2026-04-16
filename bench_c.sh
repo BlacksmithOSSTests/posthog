@@ -18,6 +18,7 @@ docker run -d --name clickhouse2 --network posthog_default \
   -p 8124:8123 \
   -p 9001:9000 \
   -e CLICKHOUSE_SKIP_USER_SETUP=1 \
+  -e KAFKA_HOSTS=kafka:9092 \
   -v "$PWD/docker/clickhouse/users-dev.xml:/etc/clickhouse-server/users.xml" \
   -v "$PWD/docker/clickhouse/config.xml:/etc/clickhouse-server/config.xml" \
   -v "$PWD/docker/clickhouse/config.d/default_ch2.xml:/etc/clickhouse-server/config.d/default.xml" \
@@ -30,13 +31,11 @@ timeout 90 bash -c 'until curl -sf http://localhost:8124/ping 2>/dev/null; do sl
 echo "Second ClickHouse ready."
 
 # Drop stale xdist worker databases so --create-db gets a clean slate
+# Note: DROP DATABASE must run outside a transaction block, so use separate psql calls
 echo "Dropping stale xdist worker databases..."
-PGPASSWORD=posthog psql -U posthog -h localhost -d posthog -c "
-  DROP DATABASE IF EXISTS test_posthog_gw0;
-  DROP DATABASE IF EXISTS test_posthog_gw1;
-  DROP DATABASE IF EXISTS test_posthog_persons_gw0;
-  DROP DATABASE IF EXISTS test_posthog_persons_gw1;
-" 2>&1 || true
+for db in test_posthog_gw0 test_posthog_gw1 test_posthog_persons_gw0 test_posthog_persons_gw1; do
+  PGPASSWORD=posthog psql -U posthog -h localhost -d posthog -c "DROP DATABASE IF EXISTS \"$db\"" 2>&1 || true
+done
 
 START=$(date +%s)
 EXIT=0

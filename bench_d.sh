@@ -9,17 +9,12 @@ echo "pytest: $(python -m pytest --version)"
 echo "CPUs: $(nproc)"
 
 # Drop stale xdist worker databases so --create-db gets a clean slate
+# Note: DROP DATABASE must run outside a transaction block, so use separate psql calls
 echo "Dropping stale xdist worker databases..."
-PGPASSWORD=posthog psql -U posthog -h localhost -d posthog -c "
-  DROP DATABASE IF EXISTS test_posthog_gw0;
-  DROP DATABASE IF EXISTS test_posthog_gw1;
-  DROP DATABASE IF EXISTS test_posthog_gw2;
-  DROP DATABASE IF EXISTS test_posthog_gw3;
-  DROP DATABASE IF EXISTS test_posthog_persons_gw0;
-  DROP DATABASE IF EXISTS test_posthog_persons_gw1;
-  DROP DATABASE IF EXISTS test_posthog_persons_gw2;
-  DROP DATABASE IF EXISTS test_posthog_persons_gw3;
-" 2>&1 || true
+for db in test_posthog_gw0 test_posthog_gw1 test_posthog_gw2 test_posthog_gw3 \
+           test_posthog_persons_gw0 test_posthog_persons_gw1 test_posthog_persons_gw2 test_posthog_persons_gw3; do
+  PGPASSWORD=posthog psql -U posthog -h localhost -d posthog -c "DROP DATABASE IF EXISTS \"$db\"" 2>&1 || true
+done
 
 START=$(date +%s)
 EXIT=0
