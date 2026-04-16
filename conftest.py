@@ -109,14 +109,17 @@ def _patch_teardown_for_xdist():
 def _reset_broken_db_connections():
     """Close Django DB connections that are in a failed-transaction state after each test.
 
-    posthog/conftest.py's _django_db_setup drops posthog_grouptypemapping (and other
-    person-related tables) from each worker's test DB as part of the dual-persons-table
-    migration setup.  A test that calls GroupTypeMapping.objects.create() will hit
-    UndefinedTable, which leaves connection.needs_rollback=True.  In xdist workers
-    this state persists across tests (Django's TestCase savepoint rollback does not
-    always clear needs_rollback), causing every subsequent test to fail with
-    InFailedSqlTransaction.  Closing the connection here forces Django to open a
-    fresh one for the next test, isolating the failure to a single test.
+    posthog/conftest.py's _django_db_setup drops posthog_grouptypemapping from each
+    worker's test DB.  get_group_types_for_project() (group_type_mapping.py) catches
+    the resulting DatabaseError but then calls safe_cache_set() inside the except —
+    triggering TransactionManagementError because the connection's atomic block is
+    already poisoned.  This fires on every _create_person/_create_event call, not
+    just the one test that explicitly uses GroupTypeMapping.
+
+    Django's needs_rollback flag is cleared by TestCase's savepoint teardown, but the
+    underlying psycopg3 connection can remain in INERROR state.  We check the raw
+    libpq transaction status and close the connection if it is bad, so the next test
+    in the same worker gets a fresh connection.
 
     This is a no-op in single-threaded mode (PYTEST_XDIST_WORKER not set).
     """
@@ -131,9 +134,31 @@ def _reset_broken_db_connections():
 
         for alias in connections:
             conn = connections[alias]
-            # Only close if Django has marked this connection as needing rollback —
-            # closing clean connections would waste reconnect overhead.
+            raw = getattr(conn, "connection", None)
+            if raw is None:
+                continue
+            bad = False
+            # Django-level check: needs_rollback still set
             if getattr(conn, "needs_rollback", False):
+                bad = True
+            # psycopg3 check: libpq reports INERROR (value 2) or UNKNOWN (value 3)
+            if not bad:
+                try:
+                    status = raw.info.transaction_status
+                    # pq.TransactionStatus: IDLE=0, INTRANS=1, INERROR=2, UNKNOWN=3
+                    if status.value >= 2:
+                        bad = True
+                except AttributeError:
+                    pass
+            # psycopg2 fallback: STATUS_IN_TRANSACTION_INERROR = 3
+            if not bad:
+                try:
+                    import psycopg2.extensions as pg2ext
+                    if raw.status == pg2ext.TRANSACTION_STATUS_INERROR:
+                        bad = True
+                except (ImportError, AttributeError):
+                    pass
+            if bad:
                 try:
                     conn.close()
                 except Exception:
