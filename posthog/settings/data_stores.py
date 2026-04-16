@@ -380,6 +380,18 @@ if CLICKHOUSE_SECURE:
 
 CLICKHOUSE_HTTP_URL: str = f"{_clickhouse_http_protocol}{CLICKHOUSE_HOST}:{_clickhouse_http_port}/"
 
+# xdist multi-CH routing: when CH_XDIST_ROUTING=1, route each worker (gw1, gw2, ...)
+# to its own ClickHouse instance on port 8123+N.  gw0 keeps the default port.
+# This runs at settings load time so every fixture sees the correct URL from the start.
+if (
+    TEST
+    and PYTEST_XDIST_WORKER_NUM is not None
+    and PYTEST_XDIST_WORKER_NUM > 0
+    and os.getenv("CH_XDIST_ROUTING") == "1"
+):
+    _ch_worker_http_port = int(_clickhouse_http_port) + PYTEST_XDIST_WORKER_NUM
+    CLICKHOUSE_HTTP_URL = f"{_clickhouse_http_protocol}{CLICKHOUSE_HOST}:{_ch_worker_http_port}/"
+
 CLICKHOUSE_OFFLINE_HTTP_URL: str = (
     f"{_clickhouse_http_protocol}{CLICKHOUSE_OFFLINE_CLUSTER_HOST}:{_clickhouse_http_port}/"
 )
