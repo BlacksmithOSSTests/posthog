@@ -117,9 +117,10 @@ def _reset_broken_db_connections():
     just the one test that explicitly uses GroupTypeMapping.
 
     Django's needs_rollback flag is cleared by TestCase's savepoint teardown, but the
-    underlying psycopg3 connection can remain in INERROR state.  We check the raw
-    libpq transaction status and close the connection if it is bad, so the next test
-    in the same worker gets a fresh connection.
+    underlying psycopg3 connection can remain in INERROR state (libpq status=3).  We
+    check the raw libpq transaction status and close the connection only if it is in
+    INERROR (3) or UNKNOWN (4) state — NOT INTRANS (2), which is the normal expected
+    state while Django TestCase holds an open transaction around each test.
 
     This is a no-op in single-threaded mode (PYTEST_XDIST_WORKER not set).
     """
@@ -141,12 +142,15 @@ def _reset_broken_db_connections():
             # Django-level check: needs_rollback still set
             if getattr(conn, "needs_rollback", False):
                 bad = True
-            # psycopg3 check: libpq reports INERROR (value 2) or UNKNOWN (value 3)
+            # psycopg3 check: libpq reports INERROR or UNKNOWN
             if not bad:
                 try:
                     status = raw.info.transaction_status
-                    # pq.TransactionStatus: IDLE=0, INTRANS=1, INERROR=2, UNKNOWN=3
-                    if status.value >= 2:
+                    # libpq PGTransactionStatusType values:
+                    #   IDLE=0, ACTIVE=1, INTRANS=2 (normal open tx), INERROR=3, UNKNOWN=4
+                    # INTRANS (2) is the expected state inside Django TestCase — do NOT close it.
+                    # Only close on INERROR (3) or UNKNOWN (4).
+                    if status.value >= 3:
                         bad = True
                 except AttributeError:
                     pass
