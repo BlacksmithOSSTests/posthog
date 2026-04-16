@@ -11,7 +11,7 @@ START=$(date +%s)
 EXIT=0
 python -m pytest --tb=line -q posthog/hogql_queries/test/ \
   -m "not async_migrations" \
-  -n 2 --dist=loadscope 2>&1 || EXIT=$?
+  -n 2 2>&1 || EXIT=$?
 END=$(date +%s)
 ELAPSED=$((END - START))
 echo "B_SECONDS=$ELAPSED"

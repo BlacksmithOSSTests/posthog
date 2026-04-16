@@ -379,10 +379,19 @@ if CLICKHOUSE_SECURE:
     _clickhouse_http_port = "8443"
 
 CLICKHOUSE_HTTP_URL: str = f"{_clickhouse_http_protocol}{CLICKHOUSE_HOST}:{_clickhouse_http_port}/"
+# HTTP port used by clickhouse_connect (get_http_client) — kept in sync with CLICKHOUSE_HTTP_URL.
+CLICKHOUSE_HTTP_PORT: int = int(_clickhouse_http_port)
 
 # xdist multi-CH routing: when CH_XDIST_ROUTING=1, route each worker (gw1, gw2, ...)
 # to its own ClickHouse instance on port 8123+N.  gw0 keeps the default port.
-# This runs at settings load time so every fixture sees the correct URL from the start.
+#
+# This runs at settings load time so every fixture sees the correct URL from the
+# start — before any package-scoped django_db_setup fixture creates the CH database.
+#
+# We also force CLICKHOUSE_USE_HTTP=True for non-gw0 workers so that ALL query
+# traffic (not just the DB-creation URL) goes through the HTTP client, which
+# honours CLICKHOUSE_HTTP_PORT.  Native TCP (port 9000) is not independently
+# routable without a separate port-forwarding rule; HTTP sidesteps that entirely.
 if (
     TEST
     and PYTEST_XDIST_WORKER_NUM is not None
@@ -391,6 +400,8 @@ if (
 ):
     _ch_worker_http_port = int(_clickhouse_http_port) + PYTEST_XDIST_WORKER_NUM
     CLICKHOUSE_HTTP_URL = f"{_clickhouse_http_protocol}{CLICKHOUSE_HOST}:{_ch_worker_http_port}/"
+    CLICKHOUSE_HTTP_PORT = _ch_worker_http_port
+    CLICKHOUSE_USE_HTTP = True  # force HTTP so native-TCP pool is not used
 
 CLICKHOUSE_OFFLINE_HTTP_URL: str = (
     f"{_clickhouse_http_protocol}{CLICKHOUSE_OFFLINE_CLUSTER_HOST}:{_clickhouse_http_port}/"

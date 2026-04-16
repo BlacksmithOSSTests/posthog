@@ -16,6 +16,7 @@ echo "Using image: $CHIMG"
 docker rm -f clickhouse2 2>/dev/null || true
 docker run -d --name clickhouse2 --network posthog_default \
   -p 8124:8123 \
+  -p 9001:9000 \
   -e CLICKHOUSE_SKIP_USER_SETUP=1 \
   -v "$PWD/docker/clickhouse/users-dev.xml:/etc/clickhouse-server/users.xml" \
   -v "$PWD/docker/clickhouse/config.xml:/etc/clickhouse-server/config.xml" \

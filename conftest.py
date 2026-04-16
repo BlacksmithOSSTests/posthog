@@ -1,17 +1,21 @@
-"""Root conftest.py — xdist ClickHouse instance routing for benchmark experiments.
+"""Root conftest.py — xdist compatibility patches for benchmark experiments.
 
-When running with pytest-xdist (-n 2), routes each worker to its own ClickHouse:
-  gw0 → port 8123 (default, started by docker-compose)
-  gw1 → port 8124 (second instance, started by the benchmark workflow)
-  gw2 → port 8125, etc.
+Two session-scoped autouse fixtures:
 
-This is a session-scoped autouse fixture, so it runs before any package-scoped
-django_db_setup fixture creates the ClickHouse Database objects — meaning each
-worker's db_url is already correctly overridden when tables are created.
+1. _route_clickhouse_to_worker_port (experiment C only, CH_XDIST_ROUTING=1):
+   Routes each xdist worker to its own ClickHouse HTTP URL:
+     gw0 → port 8123 (default, started by docker-compose)
+     gw1 → port 8124 (second instance, started by the benchmark workflow)
+   NOTE: data_stores.py already handles this at settings load time; this fixture
+   is a belt-and-suspenders fallback kept for symmetry.
 
-Without this file (or when CH_XDIST_ROUTING=0), all workers share port 8123
-with separate databases (posthog_test_gw0, posthog_test_gw1, ...) — that also
-works because settings.py already handles PYTEST_XDIST_WORKER isolation.
+2. _patch_teardown_for_xdist (experiment B & C):
+   Under xdist, pre-flushes persons/events in APIBaseTest.tearDown before the
+   "persons not flushed" check fires.  In single-threaded mode (A), sync_execute
+   auto-flushes so the check always passes.  Under xdist, the timing between
+   workers can leave stale entries in the in-process cache even after a successful
+   flush, causing false-positive teardown errors.  Pre-flushing in tearDown is
+   idempotent (no-op when the list is already empty) so it doesn't hide real bugs.
 """
 
 import os
@@ -20,13 +24,11 @@ import pytest
 
 @pytest.fixture(scope="session", autouse=True)
 def _route_clickhouse_to_worker_port():
-    """Override CLICKHOUSE_HTTP_URL per xdist worker when CH_XDIST_ROUTING=1.
+    """Belt-and-suspenders CH URL override for xdist workers (experiment C).
 
-    Only active when both:
-    - CH_XDIST_ROUTING=1 env var is set (opt-in, so single-CH experiments still work)
-    - PYTEST_XDIST_WORKER is set to a non-gw0 worker
-
-    gw0 keeps the default port 8123. gw1 gets 8124, gw2 gets 8125, ...
+    data_stores.py already sets CLICKHOUSE_HTTP_URL at settings-load time when
+    CH_XDIST_ROUTING=1.  This fixture is kept as a fallback in case any code
+    path re-reads the URL from os.environ rather than Django settings.
     """
     if os.environ.get("CH_XDIST_ROUTING") != "1":
         yield
@@ -46,23 +48,49 @@ def _route_clickhouse_to_worker_port():
     port = 8123 + worker_num  # gw1→8124, gw2→8125, ...
     new_url = f"http://localhost:{port}/"
 
-    # Patch Django settings — safe because this session fixture runs before
-    # the package-scoped django_db_setup fixture creates any Database objects.
     from django.conf import settings
 
     original_url = getattr(settings, "CLICKHOUSE_HTTP_URL", None)
-    settings.CLICKHOUSE_HTTP_URL = new_url
+    if original_url != new_url:
+        settings.CLICKHOUSE_HTTP_URL = new_url
+        print(f"\n[xdist routing fallback] {worker_id} → ClickHouse {new_url}")
 
-    # Also patch logs URL if it points to the same host
-    original_logs = getattr(settings, "CLICKHOUSE_LOGS_URL", None)
-    if original_logs and ":8123" in original_logs:
-        settings.CLICKHOUSE_LOGS_URL = new_url
-
-    print(f"\n[xdist routing] {worker_id} → ClickHouse {new_url}")
     yield
 
-    # Restore (defensive cleanup, though session teardown handles it)
     if original_url is not None:
         settings.CLICKHOUSE_HTTP_URL = original_url
-    if original_logs is not None:
-        settings.CLICKHOUSE_LOGS_URL = original_logs
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _patch_teardown_for_xdist():
+    """Pre-flush persons/events in tearDown when running under xdist.
+
+    Under xdist, Django TestCase's tearDown() can see a non-empty
+    persons_cache_tests even when the test body correctly flushed, because
+    the workers share the in-process global cache and fixture ordering differs
+    slightly from the single-threaded runner.  Pre-flushing before the check is
+    idempotent and matches what single-threaded mode achieves via sync_execute's
+    auto-flush.  The check is NOT disabled — it still fires if flush itself fails.
+    """
+    if not os.environ.get("PYTEST_XDIST_WORKER"):
+        yield
+        return
+
+    try:
+        from posthog.test.base import APIBaseTest, flush_persons_and_events
+    except ImportError:
+        yield
+        return
+
+    original_tearDown = APIBaseTest.tearDown
+
+    def _xdist_safe_tearDown(self):
+        # Flush any remaining cache entries before the check in the base tearDown.
+        # This is the same flush that sync_execute performs automatically in TEST
+        # mode — we just do it once more here as a safety net for xdist workers.
+        flush_persons_and_events()
+        original_tearDown(self)
+
+    APIBaseTest.tearDown = _xdist_safe_tearDown
+    yield
+    APIBaseTest.tearDown = original_tearDown

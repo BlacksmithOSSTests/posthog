@@ -167,6 +167,9 @@ _clickhouse_http_pool_mgr = httputil.get_pool_manager(
 def get_http_client(**overrides):
     kwargs = {
         "host": settings.CLICKHOUSE_HOST,
+        # Use CLICKHOUSE_HTTP_PORT when available (set by per-worker xdist routing).
+        # Falls back to the default (8123 / 8443) when the attribute is absent.
+        "port": getattr(settings, "CLICKHOUSE_HTTP_PORT", data_stores.CLICKHOUSE_HTTP_PORT),
         "database": settings.CLICKHOUSE_DATABASE,
         "secure": settings.CLICKHOUSE_SECURE,
         "user": settings.CLICKHOUSE_USER,  # kwargs have user not username
