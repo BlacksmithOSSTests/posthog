@@ -29,6 +29,15 @@ echo "Waiting for second ClickHouse on :8124..."
 timeout 90 bash -c 'until curl -sf http://localhost:8124/ping 2>/dev/null; do sleep 3; done'
 echo "Second ClickHouse ready."
 
+# Drop stale xdist worker databases so --create-db gets a clean slate
+echo "Dropping stale xdist worker databases..."
+PGPASSWORD=posthog psql -U posthog -h localhost -d posthog -c "
+  DROP DATABASE IF EXISTS test_posthog_gw0;
+  DROP DATABASE IF EXISTS test_posthog_gw1;
+  DROP DATABASE IF EXISTS test_posthog_persons_gw0;
+  DROP DATABASE IF EXISTS test_posthog_persons_gw1;
+" 2>&1 || true
+
 START=$(date +%s)
 EXIT=0
 CH_XDIST_ROUTING=1 python -m pytest --tb=line -q posthog/hogql_queries/test/ \
